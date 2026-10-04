@@ -11,7 +11,7 @@ description: Start a DevJock session. Loads your DevJock system prompts and the 
   - It prints the path, not the content: Claude Code truncates command output over a few KB.
   - DevJock decides which prompts your account gets. Everything the model does next is written
     in DevJock (prompt 776), not here.
-  - In Claude Desktop Chat/Cowork there is no shell; the line shows as text and the last bullet applies.
+  - In the Cowork and Chat tabs there is no shell; the line shows as text and the last bullet applies. Use the Code tab.
 -->
 
 !`python3 "${CLAUDE_PLUGIN_ROOT}/skills/initialize-devjock/inject-system-prompts.py"`

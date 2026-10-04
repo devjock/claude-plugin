@@ -2,7 +2,7 @@
 
 Connect Claude to your DevJock workspace — your tasks, memories, assistants and skills — through a secure DevJock sign-in. Nothing to install on your computer: no terminal, no Node.js, no Python.
 
-When you say "Initialize DevJock", Claude loads the DevJock system prompts for your role (workspace user, workspace admin or platform admin — DevJock decides) and the list of DevJock cloud skills and agents. In the Chat and Cowork tabs it fetches them one by one through the connector. In Claude Code, and in the Code tab, it uses a small bundled Python script that fetches them in one go if `python3` is present, and falls back to the connector if not.
+When you say "Initialize DevJock", Claude loads your DevJock system prompts and the list of DevJock cloud skills and agents. In the **Code** tab (and in Claude Code) a small bundled script fetches them in one go before Claude reads anything. In the Cowork and Chat tabs, which have no shell, Claude fetches them one by one through the connector.
 
 ## What you need
 
@@ -11,9 +11,9 @@ When you say "Initialize DevJock", Claude loads the DevJock system prompts for y
 
 ## Install in Claude Desktop
 
-Claude Desktop has three tabs. **Cowork** and **Code** load the whole plugin, including its DevJock connector. **Chat** loads the plugin's skill but not its connector, so in Chat you also add DevJock as a connector (see "Using the Chat tab" below).
+Use the **Code** tab. It loads the whole plugin, including its DevJock connector, and runs the loader for you. Cowork also loads the plugin but has no shell, so loading is slower; Chat loads the skill but not the connector (see "Using the Chat tab" below).
 
-1. Open Claude Desktop and switch to the **Cowork** or **Code** tab.
+1. Open Claude Desktop and switch to the **Code** tab.
 2. Open **Customize → Plugins → Add → Add marketplace**.
 3. Enter `Devjock-ai/devjock-claude-plugin` and add it.
 4. Install the **DevJock** plugin from that marketplace.
