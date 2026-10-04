@@ -15,7 +15,7 @@ Use the **Code** tab. It loads the whole plugin, including its DevJock connector
 
 1. Open Claude Desktop and switch to the **Code** tab.
 2. Open **Customize → Plugins → Add → Add marketplace**.
-3. Enter `devjock/devjock` and add it.
+3. Enter `devjock/claude-plugin` and add it.
 4. Install the **DevJock** plugin from that marketplace.
 5. The first time Claude uses DevJock, a browser window opens asking you to sign in to DevJock. Sign in and approve. Move through the screens promptly — if you take too long, Claude stops waiting and you will need to try again.
 6. Ask Claude: **"Initialize DevJock."** Claude loads DevJock's operating context and asks what you want to work on.
@@ -23,8 +23,8 @@ Use the **Code** tab. It loads the whole plugin, including its DevJock connector
 ## Install in Claude Code
 
 ```
-/plugin marketplace add devjock/devjock
-/plugin install devjock@devjock-ai
+/plugin marketplace add devjock/claude-plugin
+/plugin install devjock@devjock
 ```
 
 Restart Claude Code, then type `/mcp`, choose **devjock**, and pick **Authenticate** to sign in. Then ask Claude to "initialize DevJock".

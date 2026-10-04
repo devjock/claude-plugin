@@ -2,14 +2,14 @@
   "name": "devjock",
   "displayName": "DevJock",
   "version": "1.1.0",
-  "description": "Connect Claude to your DevJock workspace: tasks, memories, assistants and skills, through a secure DevJock sign-in. Works in Claude Desktop (Cowork and Code) and in Claude Code. Nothing to install on your computer.",
+  "description": "Give Claude a persistent brain and a team \u2014 agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation.",
   "author": {
     "name": "DevJock",
     "email": "support@tradeloopcorp.com",
     "url": "https://devjock.ai"
   },
   "homepage": "https://devjock.ai",
-  "repository": "https://github.com/devjock/devjock",
+  "repository": "https://github.com/devjock/claude-plugin",
   "license": "SEE LICENSE IN LICENSE",
   "keywords": [
     "devjock",

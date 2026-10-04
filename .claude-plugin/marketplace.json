@@ -1,5 +1,5 @@
 {
-  "name": "devjock-ai",
+  "name": "devjock",
   "owner": {
     "name": "DevJock",
     "email": "support@tradeloopcorp.com"
@@ -11,7 +11,7 @@
     {
       "name": "devjock",
       "source": "./",
-      "description": "Connect Claude to your DevJock workspace through a secure DevJock sign-in."
+      "description": "Give Claude a persistent brain and a team \u2014 agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation."
     }
   ]
 }
