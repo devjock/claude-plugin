@@ -1,0 +1,17 @@
+{
+  "name": "devjock",
+  "owner": {
+    "name": "DevJock",
+    "email": "support@tradeloopcorp.com"
+  },
+  "metadata": {
+    "description": "The DevJock plugin for Claude."
+  },
+  "plugins": [
+    {
+      "name": "devjock",
+      "source": "./",
+      "description": "Give Claude a persistent brain and a team \u2014 agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation."
+    }
+  ]
+}
