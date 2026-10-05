@@ -209,6 +209,8 @@ def _oauth_browser_login():
     server.timeout = 120
 
     print("  Opening browser for DevJock login...")
+    print("  To sign in as a different DevJock account, paste this link into a private window instead:")
+    print(f"  {auth_url}")
     webbrowser.open(auth_url)
 
     # Wait for callback
