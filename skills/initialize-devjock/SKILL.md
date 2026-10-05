@@ -4,8 +4,10 @@ description: Start a DevJock session: load your system prompts and agent registr
 ---
 
 <!--
-  - The !` line below runs BEFORE the model reads this file. Claude Code executes it,
-    replaces the line with its output, then hands the file to the model. The model cannot skip it.
+  - The shell line below (the one that starts with an exclamation mark) runs BEFORE the model
+    reads this file. Claude Code executes it, replaces the line with its output, then hands the
+    file to the model. The model cannot skip it. Do not put an exclamation mark followed by a
+    backtick anywhere in this comment: the preprocessor would treat it as a command.
   - It signs in as you, fetches your DevJock system prompts, the registry and the session
     instructions, writes them to one local file, and prints that file's path.
   - It prints the path, not the content: Claude Code truncates command output over a few KB.
