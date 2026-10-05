@@ -1,6 +1,6 @@
 ---
 name: initialize-devjock
-description: Start a DevJock session. Loads your DevJock system prompts and the DevJock skill/agent registry so Claude knows how DevJock works before you start. Use when the user says "initialize DevJock", "start DevJock", "load DevJock", or opens a conversation about their DevJock workspace, tasks, memories or assistants.
+description: Start a DevJock session: load your system prompts and agent registry. Use when the user says "initialize DevJock" or starts talking about their DevJock workspace.
 ---
 
 <!--
