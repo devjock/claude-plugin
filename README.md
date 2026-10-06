@@ -46,3 +46,14 @@ The Chat tab loads the plugin's "Initialize DevJock" skill, but not the plugin's
 - **"Initialize DevJock" says DevJock isn't connected in the Chat tab.** Chat doesn't use the plugin's connector. Add the DevJock connector (steps above), or switch to Cowork.
 
 Questions: support@tradeloopcorp.com
+
+## Testing against proto (DevJock staff)
+
+Set `DEVJOCK_ENV=proto` to point the initialize skill at the proto stack, which runs the latest server code. Proto signs in through its own account system and stores its token separately, so your production sign-in is untouched.
+
+```
+DEVJOCK_ENV=proto python3 skills/lib/authorize_devjock_api.py
+DEVJOCK_ENV=proto python3 skills/initialize-devjock/inject-system-prompts.py
+```
+
+The first command signs you in to proto in the browser. The second writes the system prompts your proto account receives to `skills/initialize-devjock/injected-context.md`. In Claude Code, start the session with `DEVJOCK_ENV=proto claude` to run the skill against proto.
