@@ -1,44 +1,25 @@
 #!/usr/bin/env python3
 """
-Inject DevJock system prompts into the initialize-devjock skill at boot — the
-EA3 pattern applied to the plugin. Two kinds of context are injected:
+Load the caller's DevJock system prompts into a file the initialize-devjock skill
+reads at boot.
 
-1. System PROMPTS + POSTSCRIPTS (prompts table, type_id=2 then 7) — the live
-   operating context. Order mirrors the live CWO (ChatService.php). Active only;
-   category='skill' prompts skipped (legacy: skills used to be prompts); sort ASC.
+1. System prompts: every PLATFORM prompt whose context_window_position is
+   preamble, then every one at postscript. The server returns only the prompts
+   the caller's role may read (required_role_id, task 48-41401), so this script
+   never decides who gets what. Sorted by sort_order, then id, as the CWO does.
+2. The cloud skill and agent registry: name, description and id of every active
+   platform agent template, so the session knows what it can invoke.
+3. The session instructions, prompt 776, appended last.
 
-2. The SKILL + AGENT REGISTRY (ai_agent_templates table, BOTH category='skill'
-   and category='agent' — same table, they just behave differently). A registry
-   of name + DESCRIPTION + id, NOT full bodies, so a Claude Code session knows
-   what cloud skills/agents exist and can invoke them (via chat_with_agent:
-   skill_ids=[id] to layer a skill, or agent_id / the assistant's task).
-
-WHY (2) EXISTS — the fix shipped 2026-07-07: skills were migrated from prompts to
-agent-templates (so they could carry tools). The old injector only read the
-prompts table, so it NEVER saw skills like /manage-task — every Claude Code
-session booted blind to the skill layer. This now loads the agent-templates
-table directly.
-
-Workspace/agent prompts (type_id=3) are intentionally NOT injected — a Claude Code
-session is not workspace- or agent-scoped by default. The registry is scoped to
-PLATFORM templates (workspace_id=-2), which is what a session should know about.
-
-NOTE (perf/follow-up): descriptions are fetched per-template via /agents/get
-because /agents/list omits the description column (same omission as /tools/list —
-see bug 48-40815). Platform template count is small (~20), so ~20 boot calls is
-acceptable; collapse to one call once the list endpoint returns description.
+Set DEVJOCK_ENV=proto to run against the proto stack (see skills/lib).
 """
 import json
-import os
 import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
 
-API = "https://api.devjock.com/v1.0"
-PLATFORM_WS = -2
-
-# Shown when the type-2 fetch comes back empty. The server decides which platform
+# Shown when the preamble fetch comes back empty. The server decides which platform
 # prompts each role may see; a non-admin can legitimately get none, and without
 # this notice the session would boot with no operating context and no warning.
 NO_PROMPTS_NOTICE = (
@@ -67,9 +48,11 @@ if not _LIB.exists():
     )
 sys.path.insert(0, str(_LIB))
 try:
-    from authorize_devjock_api import get_access_token  # noqa: E402
+    from authorize_devjock_api import get_access_token, API_BASE, DEVJOCK_ENV  # noqa: E402
 except Exception:
     get_access_token = None
+    API_BASE = DEVJOCK_ENV = None
+API = API_BASE
 
 
 def _category(p):
@@ -98,39 +81,30 @@ def _first_list(data, *keys):
     return []
 
 
-# ---------- (1) system prompts + postscripts ----------
-# The API only lets a PLATFORM ADMIN list prompts without naming a workspace; any
-# other caller gets 400 "workspace_id is required". Platform-scoped prompts are
-# visible to every caller whatever workspace they name, so a regular workspace
-# member names one workspace they belong to and keeps only scope=platform rows.
-def member_workspace_id(token):
-    """First workspace the caller belongs to, or None if the lookup fails."""
-    try:
-        data = _get_json(f"{API}/workspaces/list?page_size=1", token)
-        ws = _first_list(data, "workspaces")
-        return ws[0].get("id") if ws else None
-    except Exception:
-        return None
+# ---------- (1) system prompts ----------
+# Old servers carry no context_window_position; map their prompt type instead
+# (2 = preamble, 7 = postscript) so an admin is not handed every platform prompt.
+_TYPE_POSITION = {2: "preamble", 7: "postscript"}
 
 
-def fetch_prompts(type_id, token, workspace_id=None):
-    base = f"{API}/prompts/list?type_id={type_id}&resolves=prompt&page_size=300"
-    urls = [f"{base}&workspace_id={workspace_id}"] if workspace_id is not None else []
-    urls.append(base)  # platform admins may omit workspace_id
-    last_err = None
-    for url in urls:
-        try:
-            data = _get_json(url, token)
-            break
-        except urllib.error.HTTPError as e:
-            last_err = e
-    else:
-        raise last_err
-    # The server is authoritative for what a caller may see; this filter only tidies, it does not hide anything.
+def _position(p):
+    pos = p.get("context_window_position")
+    if pos:
+        return pos
+    t = p.get("type")
+    tid = t.get("id") if isinstance(t, dict) else (t if isinstance(t, int) else p.get("type_id"))
+    return _TYPE_POSITION.get(int(tid)) if str(tid or "").isdigit() else None
+
+
+def fetch_prompts(position, token):
+    """Platform prompts at one context_window_position that the caller may read."""
+    data = _get_json(f"{API}/prompts/list?scope=platform&context_window_position={position}"
+                     "&resolves=prompt&page_size=300", token)
     items = [p for p in _first_list(data, "prompts")
-             if p.get("active", True) and _category(p).lower() != "skill"
-             and p.get("scope", "platform") == "platform"]
-    items.sort(key=lambda p: (p.get("sort_order") or 0, p.get("id") or 0))
+             if p.get("active", True)
+             and p.get("scope", "platform") == "platform"
+             and _position(p) == position]
+    items.sort(key=lambda p: (int(p.get("sort_order") or 0), int(p.get("id") or 0)))
     return items
 
 
@@ -147,23 +121,16 @@ def emit_prompts(items, header):
 
 # ---------- (2) skill + agent registry (agent-templates table) ----------
 def fetch_templates(token):
-    """All active PLATFORM agent-templates — both category='skill' and 'agent'.
+    """All active PLATFORM agent templates, both category='skill' and 'agent'.
 
-    scope=platform is the current marker; workspace_id=-2 is the retired one that
-    older servers still use. Try both and keep platform-scoped rows. The registry
-    is never allowed to block the prompts: on total failure it is simply empty.
+    The registry never blocks the prompts: on failure it is simply empty.
     """
-    for q in ("scope=platform", f"workspace_id={PLATFORM_WS}"):
-        try:
-            data = _get_json(f"{API}/agents/list?{q}&page_size=300", token)
-        except Exception:
-            continue
-        items = [t for t in _first_list(data, "agents", "items")
-                 if t.get("active", True) and t.get("scope", "platform") == "platform"]
-        if items:
-            break
-    else:
-        items = []
+    try:
+        data = _get_json(f"{API}/agents/list?scope=platform&page_size=300", token)
+    except Exception:
+        return []
+    items = [t for t in _first_list(data, "agents", "items")
+             if t.get("active", True) and t.get("scope", "platform") == "platform"]
     # skills first (they are the invocable workflows), then agents; alpha within.
     items.sort(key=lambda t: (0 if _category(t).lower() == "skill" else 1,
                               (t.get("name") or "").lower()))
@@ -213,37 +180,7 @@ def emit_registry(templates, token):
     return "\n".join(out), len(skills), len(agents)
 
 
-# ---------- role preview (platform admins dogfooding the customer view) ----------
-# DEVJOCK_ROLE_PREVIEW=workspace-admin makes a platform admin's boot load only what a
-# workspace admin/member gets: the prompts grouped in the user prompt agent (agent 190,
-# the bundle chat loads for non-admins). Client-side and for preview ONLY — the server
-# remains the authority on what a real non-admin can read.
 INIT_PROMPT_ID = 776  # dj.initialize-devjock-workflow: the report template and rules, appended last
-USER_PROMPT_AGENT_ID = 190            # /load-user-prompts  (workspace admin)
-WORKSPACE_USER_PROMPT_AGENT_ID = 477  # /load-workspace-user-prompts (workspace user)
-
-
-def role_preview():
-    """DEVJOCK_ROLE_PREVIEW = none | workspace-user | workspace-admin | platform-admin.
-
-    Mirrors what chat delivers per role (task 48-40386): platform admins get every
-    system prompt; workspace admins get /load-user-prompts (agent 190), workspace
-    users get /load-workspace-user-prompts (agent 477), both plus the postscript; a
-    caller with no workspace role gets none.
-    """
-    v = (os.environ.get("DEVJOCK_ROLE_PREVIEW") or "").strip().lower().replace("_", "-")
-    aliases = {"user": "workspace-user", "member": "workspace-user", "workspace-member": "workspace-user", "admin": "workspace-admin"}
-    v = aliases.get(v, v)
-    return v if v in ("none", "workspace-user", "workspace-admin", "platform-admin") else None
-
-
-def user_agent_prompt_ids(token, agent_id=USER_PROMPT_AGENT_ID):
-    data = _get_json(f"{API}/agents/get?agent_id={agent_id}", token)
-    for src in (data, data.get("agent") or {}, data.get("data") or {}):
-        ids = src.get("prompt_ids") if isinstance(src, dict) else None
-        if isinstance(ids, list):
-            return {int(i) for i in ids}
-    raise RuntimeError(f"agent {agent_id} returned no prompt_ids")
 
 
 def main():
@@ -255,20 +192,9 @@ def main():
         if not token:
             print("*DevJock token not found; run /devjock:reauthenticate to authenticate. System prompts NOT injected.*")
             return
-        ws = member_workspace_id(token)
-        platform = fetch_prompts(2, token, ws)
-        post = fetch_prompts(7, token, ws)
+        platform = fetch_prompts("preamble", token)
+        post = fetch_prompts("postscript", token)
         templates = fetch_templates(token)
-        preview = role_preview()
-        if preview:
-            full_count = len(platform) + len(post)
-            if preview == "none":
-                platform, post = [], []
-            elif preview in ("workspace-user", "workspace-admin"):
-                agent_id = WORKSPACE_USER_PROMPT_AGENT_ID if preview == "workspace-user" else USER_PROMPT_AGENT_ID
-                allowed = user_agent_prompt_ids(token, agent_id)
-                platform = [p for p in platform if int(p.get("id") or 0) in allowed]
-                # postscript (type 7) is loaded for every role by chat, so it stays
     except urllib.error.HTTPError as e:
         print(f"*DevJock API error HTTP {e.code} — system prompts NOT injected. Run /devjock:reauthenticate if token expired.*")
         return
@@ -291,17 +217,15 @@ def main():
     except Exception as e:  # noqa: BLE001
         init_md = f"\n<!-- Session instructions (prompt {INIT_PROMPT_ID}) could not be fetched: {e} -->\n"
 
-    header = (f"<!-- DevJock system prompts injected live: {len(platform)} system (type 2) "
-              f"+ {len(post)} postscript (type 7) prompts + {n_skills} skills + {n_agents} agents "
+    header = (f"<!-- DevJock system prompts injected live: {len(platform)} system (preamble) "
+              f"+ {len(post)} postscript prompts + {n_skills} skills + {n_agents} agents "
               f"(agent-templates registry). Order mirrors CWO. -->")
-    if preview:
-        header += (f"\n<!-- ROLE PREVIEW: {preview} — showing {len(platform) + len(post)} of "
-                   f"{full_count} system prompts. "
-                   f"Unset DEVJOCK_ROLE_PREVIEW for the full admin context. -->")
+    if DEVJOCK_ENV != "production":
+        header += f"\n<!-- DEVJOCK_ENV={DEVJOCK_ENV}: loaded from {API} -->"
     if not platform:
         header += f"\n<!-- {NO_PROMPTS_NOTICE} -->"
 
-    platform_md = emit_prompts(platform, "DevJock System Prompts — your operating context (live-injected, type 2)")
+    platform_md = emit_prompts(platform, "DevJock System Prompts — your operating context (live-injected, preamble)")
     if not platform:
         platform_md += f"\n**{NO_PROMPTS_NOTICE}**\n"
 
@@ -309,7 +233,7 @@ def main():
         header,
         "",
         platform_md,
-        emit_prompts(post, "DevJock Platform Postscripts (live-injected, type 7)"),
+        emit_prompts(post, "DevJock Platform Postscripts (live-injected, postscript)"),
         registry_md,
         init_md,
     ])

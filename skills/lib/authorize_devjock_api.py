@@ -52,6 +52,7 @@ import webbrowser
 from pathlib import Path
 
 __all__ = [
+    "DEVJOCK_ENV",
     "get_access_token",
     "test_token",
     "API_BASE",
@@ -64,10 +65,19 @@ __all__ = [
 
 # --- Constants ---
 
-API_BASE = "https://api.devjock.com/v1.0"
-MCP_SERVER = "https://tasks-mcp.devjock.com"
+# DEVJOCK_ENV=proto points every call at the proto stack, which runs php-api main,
+# so plugin changes can be tested against server changes before they ship. Proto
+# signs in through its own Clerk instance, so its tokens live under a separate
+# credential account and never overwrite the production token.
+DEVJOCK_ENV = (os.environ.get("DEVJOCK_ENV") or "production").strip().lower()
+_ENVIRONMENTS = {
+    "production": ("https://api.devjock.com/v1.0", "https://tasks-mcp.devjock.com", "devjock-sync"),
+    "proto": ("https://api.devjockproto.com/v1.0", "https://tasks-mcp.devjockproto.com", "devjock-sync-proto"),
+}
+if DEVJOCK_ENV not in _ENVIRONMENTS:
+    raise RuntimeError(f"DEVJOCK_ENV must be one of {sorted(_ENVIRONMENTS)}, got {DEVJOCK_ENV!r}")
+API_BASE, MCP_SERVER, KEYCHAIN_ACCOUNT = _ENVIRONMENTS[DEVJOCK_ENV]
 KEYCHAIN_SERVICE = "devjock-oauth"
-KEYCHAIN_ACCOUNT = "devjock-sync"
 # Legacy file kept for one-time migration only. New code never writes here.
 LEGACY_TOKEN_FILE = Path.home() / ".claude" / ".devjock-sync-token.json"
 OAUTH_SCOPES = "openid profile email offline_access"
@@ -272,8 +282,9 @@ def _load_tokens():
     except Exception:
         pass
 
-    # One-time migration: legacy file → credential store
-    if LEGACY_TOKEN_FILE.exists():
+    # One-time migration: legacy file → credential store. The legacy file only ever
+    # held a production token, so it is never migrated into another environment.
+    if DEVJOCK_ENV == "production" and LEGACY_TOKEN_FILE.exists():
         try:
             saved = json.loads(LEGACY_TOKEN_FILE.read_text())
             _save_tokens(saved)
@@ -435,6 +446,7 @@ if __name__ == "__main__":
         print(f"Cred store: Windows Credential Manager / {WINDOWS_CRED_TARGET}")
     else:
         print(f"Cred store: macOS Keychain / {KEYCHAIN_SERVICE}/{KEYCHAIN_ACCOUNT}")
+    print(f"Env:        {DEVJOCK_ENV}")
     print(f"API base:   {API_BASE}")
     print(f"MCP server: {MCP_SERVER}")
     print()
