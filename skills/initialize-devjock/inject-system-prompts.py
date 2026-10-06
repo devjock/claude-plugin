@@ -196,7 +196,14 @@ def main():
         post = fetch_prompts("postscript", token)
         templates = fetch_templates(token)
     except urllib.error.HTTPError as e:
-        print(f"*DevJock API error HTTP {e.code} — system prompts NOT injected. Run /devjock:reauthenticate if token expired.*")
+        if e.code == 401:
+            print("*DevJock sign-in expired (HTTP 401) — system prompts NOT injected. Run /devjock:reauthenticate.*")
+        elif e.code == 400:
+            # A server older than the role columns refuses a non-admin's platform
+            # prompt list outright. That is "no prompts for this role", not a sign-in fault.
+            print(f"**{NO_PROMPTS_NOTICE}** *(The DevJock server answered HTTP 400 to the system prompt request.)*")
+        else:
+            print(f"*DevJock API error HTTP {e.code} — system prompts NOT injected.*")
         return
     except Exception as e:
         print(f"*DevJock API error: {e} — system prompts NOT injected.*")
