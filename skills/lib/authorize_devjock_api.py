@@ -46,6 +46,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -245,7 +246,11 @@ def _oauth_browser_login():
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    resp = urllib.request.urlopen(req)
+    try:
+        resp = urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"Token exchange refused by {MCP_SERVER} (HTTP {e.code}): {detail}") from None
     tokens = json.loads(resp.read())
     tokens["client_id"] = client_id  # save for refresh
 
