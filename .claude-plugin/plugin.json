@@ -1,8 +1,8 @@
 {
   "name": "devjock",
   "displayName": "DevJock",
-  "version": "1.2.0",
-  "description": "Give Claude a persistent brain and a team \u2014 agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation.",
+  "version": "1.2.1",
+  "description": "Give Claude a persistent brain and a team — agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation.",
   "author": {
     "name": "DevJock",
     "email": "support@tradeloopcorp.com",

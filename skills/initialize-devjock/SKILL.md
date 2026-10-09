@@ -20,4 +20,5 @@ description: Start a DevJock session: load your system prompts and agent registr
 
 - File path above → Read it to its last line (page by offset) and follow the session instructions at its end.
 - Authentication failure above → run `/devjock:reauthenticate`, then run this skill again.
+- "not macOS or Windows" above → follow the connector path that message describes; do not run reauthenticate.
 - No shell → `read_single_prompt(prompt_id=776)` via the DevJock connector and follow it. If the connector is missing or asks you to sign in, say: "DevJock isn't connected yet. Open the DevJock connector and sign in with your DevJock account, then ask me again."
