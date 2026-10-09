@@ -1,0 +1,210 @@
+<!-- checklist-manager render template. {{DATA}} is replaced with the list JSON; {{STAMP}} with the management stamp. -->
+<div id="djtodo">
+<style>
+  #djtodo { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 880px; margin: 0 auto; color: #1a1d21; }
+  #djtodo h1.listtitle { font-size: 21px; margin: 4px 0 12px; color: #1a1d21; }
+  #djtodo .bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 10px 12px; background: #f1f3f5; border: 1px solid #dde1e5; border-radius: 8px; margin-bottom: 14px; font-size: 14px; }
+  #djtodo .bar label { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
+  #djtodo .bar .counts { margin-left: auto; color: #5a6270; font-size: 13px; }
+  #djtodo h2.cat { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: #3b4351; border-bottom: 2px solid #dde1e5; padding-bottom: 4px; margin: 22px 0 10px; }
+  #djtodo .item { display: flex; gap: 10px; padding: 9px 10px; border-radius: 8px; margin-bottom: 6px; background: #fff; border: 1px solid #e7eaee; }
+  #djtodo .item.done { background: #f6f8f6; opacity: .78; }
+  #djtodo .box { width: 18px; height: 18px; margin-top: 1px; flex: 0 0 18px; border: 2px solid #9aa3af; border-radius: 4px; background: #fff; position: relative; }
+  #djtodo .item.done .box { background: #2e8540; border-color: #2e8540; }
+  #djtodo .item.done .box::after { content: ''; position: absolute; left: 4.5px; top: 0.5px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+  #djtodo .body { flex: 1; min-width: 0; }
+  #djtodo .title { font-weight: 600; font-size: 14.5px; }
+  #djtodo .item.done .title { text-decoration: line-through; text-decoration-thickness: 1px; color: #5a6270; }
+  #djtodo .seq { flex: 0 0 22px; text-align: right; color: #9aa3af; font-variant-numeric: tabular-nums; font-size: 12px; margin-top: 2px; }
+  #djtodo .num { display:inline-block; min-width: 2.2em; margin-right: 8px; font-weight: 800; font-size: 17px; color: #1f4ea8; font-family: ui-monospace, Menlo, monospace; }
+  #djtodo .rid { margin-left: 8px; color: #9aa3af; font-weight: 400; font-size: 11px; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+  #djtodo .sub { font-size: 13.5px; color: #3b4351; margin-top: 3px; padding-left: 2px; }
+  #djtodo .sub.link a { color: #0b6bcb; text-decoration: none; }
+  #djtodo .sub.link a:hover { text-decoration: underline; }
+  #djtodo .sub.update { color: #7a5b0e; }
+  #djtodo .sub.donenote { color: #2e6b34; }
+  #djtodo .stamp { font-size: 12px; color: #8a93a1; margin: 16px 0 0; font-style: italic; }
+  #djtodo .nav { margin: 0 0 12px; padding: 8px 12px; background: #f7f9fb; border: 1px solid #e2e8f0; border-radius: 8px; }
+  #djtodo .nav summary { cursor: pointer; font-size: 16px; font-weight: 600; color: #0b6bcb; user-select: none; list-style: none; }
+  #djtodo .nav summary:hover { text-decoration: underline; }
+  #djtodo .nav summary::-webkit-details-marker { display: none; }
+  #djtodo .nav summary::before { content: '\25B8'; display: inline-block; margin-right: 7px; transition: transform .15s; }
+  #djtodo .nav[open] summary::before { transform: rotate(90deg); }
+  #djtodo .nav ul { margin: 10px 0 2px; padding-left: 22px; list-style: none; }
+  #djtodo .nav li { margin: 10px 0; }
+  #djtodo .nav .crumb { color: #8a93a1; font-size: 11.5px; letter-spacing: .02em; margin-bottom: 2px; }
+  #djtodo .nav .crumb a { color: #8a93a1; text-decoration: none; }
+  #djtodo .nav .crumb a:hover { color: #5a6270; text-decoration: underline; }
+  #djtodo .nav .name { font-size: 14px; }
+  #djtodo .nav .name a { color: #0b6bcb; text-decoration: none; }
+  #djtodo .nav .name a:hover { text-decoration: underline; }
+  #djtodo .nav .here { color: #1a1d21; font-weight: 600; }
+  #djtodo .nav .ext, #djtodo .sub.link .ext { font-size: 10px; margin-left: 3px; opacity: .65; vertical-align: super; }
+  #djtodo .nav .meta { color: #8a93a1; font-size: 12.5px; font-weight: 400; }
+  #djtodo .purpose { font-size: 13px; color: #7a5b0e; background: #fdf6e3; border: 1px solid #f0e3b8; border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; }
+  #djtodo .archhead { margin-top: 28px; }
+  #djtodo .hidden { display: none; }
+  /* sandbox link escape hatch: see the LINK OPENING note in the script below */
+  #djtodo a[href^="http"] { cursor: pointer; }
+  #djtodo .djt-flash { display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 10px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .02em; vertical-align: middle;
+    background: #e3f3e6; color: #1f6b2c; border: 1px solid #b9dfc2; }
+  #djtodo .djt-flash.warn { background: #fdf1dc; color: #7a5b0e; border-color: #f0dcae; }
+  #djtodo .djt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+<h1 class="listtitle">{{TITLE}}</h1>
+{{NAV}}
+<p class="purpose">⚠ <b>A checklist never replaces the task system.</b> Lists are for loose ends, shortlists, steps inside a task, workflows, and anything else worth tracking — but real work belongs on DevJock tasks. Small items get handled in the course of work and checked off here; bigger items get filed as tasks (<b>with a link</b>) and checked off here. Do not work a project&rsquo;s plan off this list as if it were the backlog.</p>
+<div class="bar">
+  <label><input type="checkbox" id="djt-done"> show completed</label>
+  <label><input type="checkbox" id="djt-arch"> show archive</label>
+  <span class="counts" id="djt-counts"></span>
+</div>
+<div id="djt-list"></div>
+<div id="djt-archive" class="hidden"></div>
+<div id="djt-say" class="djt-sr" role="status" aria-live="polite"></div>
+<p class="stamp">{{STAMP}}</p>
+<script>
+(function () {
+  var DATA = {{DATA}};
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
+
+  // seq = position in the visible list (1,2,3…) shown left of the checkbox, so the
+  // list reads like a list. The stable identifier is shown after the title: the real
+  // DevJock task id when the item points at one, otherwise the internal row id (#n),
+  // which is what `todo.py check <n>` takes and never gets reused.
+  function itemHtml(it, seq) {
+    var done = !!it.checked;
+    var h = '<div class="item ' + (done ? 'done' : 'open') + '">';
+    h += '<div class="seq">' + (seq || '') + '</div>';
+    h += '<div class="box"></div><div class="body">';
+    h += '<div class="title">' + esc(it.title)
+       + '<span class="rid">' + esc(it.eid || ('#' + it.n)) + '</span></div>';
+    if (it.link) {
+      var label = esc(it.link_title || it.title) + (it.eid ? ' (' + esc(it.eid) + ')' : '');
+      h += '<div class="sub link">🔗 <a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + label + '</a></div>';
+    }
+    if (it.description) h += '<div class="sub">' + esc(it.description) + '</div>';
+    (it.updates || []).forEach(function (u) {
+      h += '<div class="sub update">↻ ' + esc(u.date) + ': ' + esc(u.note) + '</div>';
+    });
+    if (done) h += '<div class="sub donenote">✔ ' + esc(it.checked.date) + ': ' + esc(it.checked.note) + '</div>';
+    return h + '</div></div>';
+  }
+
+  function render() {
+    var showDone = document.getElementById('djt-done').checked;
+    var cats = [], byCat = {};
+    DATA.items.forEach(function (it) {
+      var c = it.category || 'uncategorized';
+      if (!byCat[c]) { byCat[c] = []; cats.push(c); }
+      byCat[c].push(it);
+    });
+    // GTD status order, taken from the DevJock status table itself (p447 §4):
+    // In Process = right now; Next = after the In Process pile; Active = not today;
+    // Someday = no near-term plan. Wait/Blocked are cross-cutting. Unknown sorts last.
+    var GTD = ['in-progress', 'in process', 'in progress', 'done-verify', 'next', 'waiting', 'wait', 'blocked', 'active', 'someday', 'ongoing'];
+    var rank = function (c) { var i = GTD.indexOf((c || '').toLowerCase()); return i < 0 ? GTD.length : i; };
+    cats.sort(function (a, b) { return rank(a) - rank(b); });
+    var irank = function (it) { var r = parseInt(it.rank, 10); return isNaN(r) ? [1,0,it.n] : [0,r,it.n]; };
+    Object.keys(byCat).forEach(function (c) { byCat[c].sort(function (x, y) {
+      var a = irank(x), b = irank(y);
+      return (a[0]-b[0]) || (a[1]-b[1]) || (a[2]-b[2]); }); });
+    var h = '', seq = 0;
+    cats.forEach(function (c) {
+      var vis = byCat[c].filter(function (it) { return showDone || !it.checked; });
+      if (!vis.length) return;
+      h += '<h2 class="cat">' + esc(c) + '</h2>' + vis.map(function (it) { return itemHtml(it, ++seq); }).join('');
+    });
+    document.getElementById('djt-list').innerHTML = h || '<p>(no open items)</p>';
+
+    var arch = document.getElementById('djt-archive');
+    if (DATA.archive.length) {
+      arch.innerHTML = '<h2 class="cat archhead">archive (completed)</h2>' + DATA.archive.map(function (it, i) { return itemHtml(it, i + 1); }).join('');
+    }
+    arch.className = document.getElementById('djt-arch').checked && DATA.archive.length ? '' : 'hidden';
+
+    var open = DATA.items.filter(function (i) { return !i.checked; }).length;
+    document.getElementById('djt-counts').textContent =
+      open + ' open · ' + (DATA.items.length - open) + ' completed · ' + DATA.archive.length + ' archived';
+    hint();
+  }
+
+  // Advertise the click behaviour on every external link, including the ones
+  // todo.py wrote into the nav and the stamp. Re-run after each render.
+  function hint() {
+    var as = document.getElementById('djtodo').getElementsByTagName('a');
+    for (var i = 0; i < as.length; i++) {
+      var u = as[i].getAttribute('href') || '';
+      if (/^https?:\/\//i.test(u) && !as[i].title) as[i].title = 'Right-click to open in a new tab';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // LINK OPENING inside DevJock's sandboxed iframe.
+  //
+  // This HTML is stored as a file_type_id=3 ("code") memory and rendered by
+  // www.devjock.ai inside an iframe whose sandbox attribute grants neither
+  // allow-top-navigation(-by-user-activation) nor allow-popups. Consequences on a
+  // plain left-click:
+  //   target="_top" / "_parent"  -> refused by the sandbox ("Unsafe attempt to
+  //                                 initiate navigation ... frame is sandboxed").
+  //   target="_blank" / window.open -> treated as a popup, blocked, returns null.
+  //   no target at all           -> navigates the frame itself, which lands the
+  //                                 DevJock renderer on a foreign page and errors.
+  // Right-click -> "open in new tab" works only because that path runs in browser
+  // chrome and never goes through the sandbox.
+  //
+  // A clipboard-copy fallback was built and then removed
+  // (2026-08-19): copying the URL does not save the user anything — they still have
+  // to open a tab and paste — and silently hijacking a click to copy is worse than
+  // doing nothing. Do not reintroduce it.
+  //
+  // So a left-click does exactly two things:
+  //   1. try window.open — costs nothing, and starts working for free the day
+  //      allow-popups is added to the sandbox. A blocked popup returns null.
+  //   2. otherwise say "right-click to open" and stop.
+  // The href is never removed, so right-click, middle-click and copy-link-address
+  // all keep their normal browser meaning.
+
+  var flashTimer = null;
+  function flash(a, msg, warn) {
+    if (flashTimer) { clearTimeout(flashTimer.t); if (flashTimer.el.parentNode) flashTimer.el.parentNode.removeChild(flashTimer.el); }
+    var s = document.createElement('span');
+    s.className = 'djt-flash' + (warn ? ' warn' : '');
+    s.textContent = msg;
+    if (a.nextSibling) a.parentNode.insertBefore(s, a.nextSibling); else a.parentNode.appendChild(s);
+    document.getElementById('djt-say').textContent = msg;
+    flashTimer = { el: s, t: setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 2200) };
+  }
+
+  function openLink(a, url) {
+    // 1. real navigation, if the sandbox ever allows it
+    var w = null;
+    try { w = window.open(url, '_blank', 'noopener'); } catch (e) { w = null; }
+    if (w) return;
+
+    // 2. it did not, so say the one thing that actually helps
+    flash(a, 'right-click to open', true);
+  }
+
+  // Delegated on the whole widget so it covers item links, the nav/breadcrumb
+  // links and the maintainer link in the stamp, all of which are emitted by
+  // todo.py rather than by this script, and survives every re-render.
+  document.getElementById('djtodo').addEventListener('click', function (ev) {
+    var a = ev.target;
+    while (a && a !== this && a.nodeName !== 'A') a = a.parentNode;
+    if (!a || a.nodeName !== 'A') return;
+    var url = a.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(url)) return;          // leave anchors/mailto alone
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) return;  // let the browser do its thing
+    ev.preventDefault();
+    openLink(a, a.href || url);
+  });
+
+  document.getElementById('djt-done').addEventListener('change', render);
+  document.getElementById('djt-arch').addEventListener('change', render);
+  render();
+})();
+</script>
+</div>
