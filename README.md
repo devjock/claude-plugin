@@ -20,6 +20,8 @@ Use the **Code** tab. It loads the whole plugin, including its DevJock connector
 5. The first time Claude uses DevJock, a browser window opens asking you to sign in to DevJock. Sign in and approve. Move through the screens promptly — if you take too long, Claude stops waiting and you will need to try again.
 6. Ask Claude: **"Initialize DevJock."** Claude loads DevJock's operating context and asks what you want to work on.
 
+After that first time, on macOS and Windows, DevJock initializes itself whenever you start a new session in the Code tab or in Claude Code. If your sign-in has expired, Claude asks you to say "Initialize DevJock" again. On Linux, use the DevJock connector instead.
+
 ## Install in Claude Code
 
 ```
