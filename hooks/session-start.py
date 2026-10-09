@@ -25,6 +25,17 @@ sys.path.insert(0, str(ROOT / "skills" / "lib"))
 sys.path.insert(0, str(ROOT / "skills" / "initialize-devjock"))
 
 
+MANDATORY = (
+    "MANDATORY FIRST STEP, BEFORE ANYTHING ELSE IN THIS SESSION. DevJock's system prompts were "
+    "loaded at startup and are your operating context. Before you act on the user's first message, "
+    "whatever it asks and however short a reply it wants, read the file named below with the Read "
+    "tool, every page, to its very last line. Then reply with the DevJock startup report exactly as "
+    "the session instructions at the end of that file specify, with every ledger row. Only after "
+    "that report, in the same reply, do what the user asked. Reading part of the file, or skipping "
+    "the report because the user asked for something else, is a failed initialization.\n\n"
+)
+
+
 def emit(text):
     print(json.dumps({"hookSpecificOutput": {
         "hookEventName": "SessionStart",
@@ -90,14 +101,10 @@ def main():
         emit("DevJock automatic initialization did not load the system prompts. The loader said:\n\n"
              + out + "\n\nTell the user, and suggest they say \"Initialize DevJock\" to retry.")
     elif "written to:" in out:
-        emit("DevJock was initialized automatically when this session started. The loader output follows. "
-             "Before your first reply, read the file it names to its last line and follow the session "
-             "instructions at its end, exactly as the initialize-devjock skill would.\n\n" + out)
+        emit(MANDATORY + out)
     else:
         # The loader could not write its file and printed the prompts inline instead.
-        emit("DevJock was initialized automatically when this session started, but the loader could not "
-             "write its file, so the prompts are inline below. Read them to the end and follow the "
-             "session instructions at the end, exactly as the initialize-devjock skill would.\n\n" + out)
+        emit(MANDATORY.replace("read the file named below", "read the prompts below") + out)
 
 
 if __name__ == "__main__":
