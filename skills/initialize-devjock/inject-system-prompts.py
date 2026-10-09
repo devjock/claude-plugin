@@ -183,7 +183,21 @@ def emit_registry(templates, token):
 INIT_PROMPT_ID = 776  # dj.initialize-devjock-workflow: the report template and rules, appended last
 
 
+# The sign-in helper stores its token in the macOS Keychain or the Windows Credential Manager.
+# Linux and other systems have neither, so the loader cannot sign in there. Instead of failing
+# into a re-authenticate loop, send the model down the connector path the skill already has.
+LINUX_NOTICE = (
+    "*This computer is not macOS or Windows, so the DevJock loader cannot store a sign-in here. "
+    "System prompts NOT injected by script. Use the DevJock connector instead: if it is not signed in, "
+    "type /mcp, choose devjock and pick Authenticate; then call read_single_prompt(prompt_id=776) "
+    "through the DevJock connector and follow it.*"
+)
+
+
 def main():
+    if sys.platform not in ("darwin", "win32"):
+        print(LINUX_NOTICE)
+        return
     if get_access_token is None:
         print("*DevJock auth module unavailable; run /devjock:reauthenticate. System prompts NOT injected.*")
         return
