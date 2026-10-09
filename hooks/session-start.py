@@ -84,9 +84,20 @@ def main():
         emit(f"DevJock automatic initialization failed ({e}). The user can say \"Initialize DevJock\" to retry.")
         return
 
-    emit("DevJock was initialized automatically when this session started. The loader output follows. "
-         "Before your first reply, read the file it names to its last line and follow the session "
-         "instructions at its end, exactly as the initialize-devjock skill would.\n\n" + buf.getvalue())
+    out = buf.getvalue()
+    if "NOT injected" in out:
+        # The loader signed in but could not load the prompts (auth expired, API error).
+        emit("DevJock automatic initialization did not load the system prompts. The loader said:\n\n"
+             + out + "\n\nTell the user, and suggest they say \"Initialize DevJock\" to retry.")
+    elif "written to:" in out:
+        emit("DevJock was initialized automatically when this session started. The loader output follows. "
+             "Before your first reply, read the file it names to its last line and follow the session "
+             "instructions at its end, exactly as the initialize-devjock skill would.\n\n" + out)
+    else:
+        # The loader could not write its file and printed the prompts inline instead.
+        emit("DevJock was initialized automatically when this session started, but the loader could not "
+             "write its file, so the prompts are inline below. Read them to the end and follow the "
+             "session instructions at the end, exactly as the initialize-devjock skill would.\n\n" + out)
 
 
 if __name__ == "__main__":
