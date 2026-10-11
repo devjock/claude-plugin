@@ -31,6 +31,10 @@ After that first time, on macOS and Windows, DevJock initializes itself whenever
 
 Restart Claude Code, then type `/mcp`, choose **devjock**, and pick **Authenticate** to sign in. Then ask Claude to "initialize DevJock".
 
+## Checklists
+
+Ask Claude to "make me a checklist" or "check off item 4" and the **checklist-manager** skill keeps an ordered, checkable list as a DevJock memory. Python edits the list, never the model, so item text cannot be rewritten by accident. Works in Claude Code and the Code tab on macOS and Windows.
+
 ## Using the Chat tab
 
 The Chat tab loads the plugin's "Initialize DevJock" skill, but not the plugin's own connector. Add DevJock as a **connector** once and the skill works there too:

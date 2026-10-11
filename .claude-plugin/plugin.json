@@ -1,7 +1,7 @@
 {
   "name": "devjock",
   "displayName": "DevJock",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Give Claude a persistent brain and a team — agents on GPT, Grok and dozens of other models, with memory and controls that survive every conversation.",
   "author": {
     "name": "DevJock",
@@ -20,7 +20,8 @@
   ],
   "skills": [
     "./skills/initialize-devjock",
-    "./skills/reauthenticate"
+    "./skills/reauthenticate",
+    "./skills/checklist-manager"
   ],
   "mcpServers": {
     "devjock": {
