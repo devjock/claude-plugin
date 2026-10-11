@@ -342,6 +342,9 @@ def render(name):
         f"skill finds every checklist by querying that label, which is why the list above "
         f"stays complete without anyone maintaining it.")
     data = json.dumps({"items": items, "archive": archived}, ensure_ascii=False)
+    # The JSON sits inside an inline <script>; "</script>" or "<!--" in any item text would
+    # end or derail the block and let the rest run as markup. "<\/" is the same string to JS.
+    data = data.replace("</", "<\\/").replace("<!--", "<\\!--")
     title = _list_title(name)
     tpl = tpl.replace("{{NAV}}", _nav_html(name))
     return (tpl.replace("{{TITLE}}", title.replace("<", "&lt;"))
@@ -611,7 +614,7 @@ def _md_html(md):
     """Small markdown -> HTML for the rollup's own output: headings, nested bullets,
     links, bold, italics. Enough for what render_rollup and the pulled sections emit."""
     def inline(t):
-        t = t.replace("&", "&amp;").replace("<", "&lt;")
+        t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         t = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
                    r'<a href="\2" target="_blank" rel="noopener">\1</a>', t)
         t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
