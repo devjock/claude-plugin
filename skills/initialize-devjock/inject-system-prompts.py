@@ -374,6 +374,10 @@ def _task_sections(task_id, token, templates, budget):
         lines = []
         for c in rows:
             agent = ""
+            if time.monotonic() > budget.deadline - 0.5:
+                # Keep the sessions already listed; say the rest were cut off.
+                lines.append(f"- … {len(rows) - len(lines)} more not loaded (timeout)")
+                break
             try:
                 g = _get_json(f"{API}/chatsessions/get?chat_id={c.get('id')}", token, timeout=budget.timeout())
                 g = g.get("data", g) if isinstance(g, dict) else {}
@@ -388,10 +392,8 @@ def _task_sections(task_id, token, templates, budget):
                         except Exception:
                             names[aid] = None
                     agent = f" — {names.get(aid) or f'agent {aid}'}"
-            except TimeoutError:
-                raise
             except Exception:
-                pass
+                pass  # a timeout here only loses this row's blueprint name
             summary = _one_line(c.get("ai_summary"), 160)
             lines.append(f"- [{_one_line(c.get('chat_name') or 'untitled', 90)} (c{c.get('id')})]"
                          f"({WEB}/chat/{c.get('id')}){agent}" + (f": {summary}" if summary else ""))
