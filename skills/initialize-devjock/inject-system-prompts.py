@@ -266,8 +266,11 @@ def _pid_alive(pid):
 def session_name(session_id, transcript_path=None, registry=None):
     """This session's name: the live-session registry first, then the transcript's
     last custom-title entry. None when neither has one."""
+    # A name Claude Code made up ("derived", e.g. on a headless `claude -p --resume`) is not
+    # the user's; skip it so the transcript's custom title is used instead.
     entries = [d for d in (registry if registry is not None else _registry_sessions())
-               if d.get("sessionId") == session_id and d.get("name")]
+               if d.get("sessionId") == session_id and d.get("name")
+               and d.get("nameSource") != "derived"]
     # A crashed run can leave a stale file under the same session id; the live one wins.
     entries.sort(key=lambda d: not _pid_alive(d.get("pid")))
     if entries:
