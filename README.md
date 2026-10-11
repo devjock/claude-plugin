@@ -31,6 +31,16 @@ After that first time, on macOS and Windows, DevJock initializes itself whenever
 
 Restart Claude Code, then type `/mcp`, choose **devjock**, and pick **Authenticate** to sign in. Then ask Claude to "initialize DevJock".
 
+## Tying a session to a task
+
+Name a Claude Code session after the DevJock task it works on, and DevJock loads that task's working context along with the system prompts:
+
+```
+/rename devjock_48-12234_2026-10-11_software-engineer_fix-login-redirect
+```
+
+The parts are `devjock`, the task id, the date, the agent type and a short task name, separated by underscores. After renaming, say "Initialize DevJock" once. From then on, every time the conversation is compacted, Claude gets back links to the task, its latest handoff post, its agent sessions, memories and files, and the other Claude Code sessions running on your computer. Each session keeps its own copy and loads only its own task; the list of other sessions shows just their names and how to message them.
+
 ## Checklists
 
 Ask Claude to "make me a checklist" or "check off item 4" and the **checklist-manager** skill keeps an ordered, checkable list as a DevJock memory. Python edits the list, never the model, so item text cannot be rewritten by accident. Works in Claude Code and the Code tab on macOS and Windows.

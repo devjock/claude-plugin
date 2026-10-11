@@ -16,7 +16,7 @@ description: Start a DevJock session: load your system prompts and agent registr
   - In the Cowork and Chat tabs there is no shell; the line shows as text and the last bullet applies. Use the Code tab.
 -->
 
-!`python3 "${CLAUDE_PLUGIN_ROOT}/skills/initialize-devjock/inject-system-prompts.py"`
+!`python3 "${CLAUDE_PLUGIN_ROOT}/skills/initialize-devjock/inject-system-prompts.py" --session-id "${CLAUDE_SESSION_ID}" --data-dir "${CLAUDE_PLUGIN_DATA}"`
 
 - File path above → Read it to its last line (page by offset) and follow the session instructions at its end.
 - Authentication failure above → run `/devjock:reauthenticate`, then run this skill again.

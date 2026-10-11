@@ -9,12 +9,26 @@ reads at boot.
    never decides who gets what. Sorted by sort_order, then id, as the CWO does.
 2. The cloud skill and agent registry: name, description and id of every active
    platform agent template, so the session knows what it can invoke.
-3. The session instructions, prompt 776, appended last.
+3. The session's working context (task 48-41483): when the session's name follows
+   devjock_{task_id}_{YYYY-MM-DD}_{agent-type}_{task-name}, links to that task, its
+   latest HANDOFF blog post, its agent sessions, memories and files; and, for any
+   session, the other Claude Code sessions running on this machine. Pointers only.
+4. The session instructions, prompt 776, appended last.
+
+The file is written per session, to {data dir}/context/{session id}.md, so two sessions
+never read each other's task. Callers pass --session-id and --data-dir; the skill gets
+both from Claude Code's text substitution, the SessionStart hook from its stdin and
+environment. Without both, the file goes to the old shared path and carries no task.
 
 Set DEVJOCK_ENV=proto to run against the proto stack (see skills/lib).
 """
+import argparse
 import json
+import os
+import re
 import sys
+import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -60,12 +74,14 @@ def _category(p):
     return (c.get("name") if isinstance(c, dict) else c) or ""
 
 
-def _get_json(url, token):
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-    })
-    with urllib.request.urlopen(req, timeout=20) as resp:
+def _get_json(url, token, timeout=20, method="GET", body=None):
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
 
@@ -180,6 +196,277 @@ def emit_registry(templates, token):
     return "\n".join(out), len(skills), len(agents)
 
 
+# ---------- (3) the session's working context (task 48-41483) ----------
+SESSION_NAME_RE = re.compile(r"^devjock_(\d+-\d+)_(\d{4}-\d{2}-\d{2})_([a-z0-9-]+)_(.+)$")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+CONTEXT_BUDGET_SECONDS = 30   # all working-context reads together
+CONTEXT_CALL_TIMEOUT = 10     # any one of them
+MAX_AGENT_SESSIONS = 10
+CONTEXT_MAX_AGE_DAYS = 7
+SESSIONS_DIR = Path.home() / ".claude" / "sessions"
+WEB = "https://www.devjock.ai"
+
+
+def _valid_session_id(value):
+    return bool(value) and bool(UUID_RE.match(value.strip().lower()))
+
+
+def _valid_data_dir(value):
+    # An unsubstituted ${CLAUDE_PLUGIN_DATA} reaches bash as an empty string; the
+    # literal check is a backstop for any caller that does not go through a shell.
+    return bool(value) and "${" not in value and Path(value).is_absolute()
+
+
+def _registry_sessions():
+    """Claude Code's live-session registry, ~/.claude/sessions/<pid>.json. Undocumented;
+    any problem reading it means no entries, never an error."""
+    out = []
+    try:
+        files = list(SESSIONS_DIR.glob("*.json"))
+    except Exception:
+        return out
+    for f in files:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(d, dict) and d.get("sessionId"):
+            out.append(d)
+    return out
+
+
+def _pid_alive(pid):
+    if sys.platform == "win32":
+        # os.kill(pid, 0) would terminate the process on Windows; ask the kernel instead.
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            handle = kernel32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return False
+            try:
+                code = wintypes.DWORD()
+                ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+                return bool(ok) and code.value == 259  # STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+
+
+def session_name(session_id, transcript_path=None, registry=None):
+    """This session's name: the live-session registry first, then the transcript's
+    last custom-title entry. None when neither has one."""
+    entries = [d for d in (registry if registry is not None else _registry_sessions())
+               if d.get("sessionId") == session_id and d.get("name")]
+    # A crashed run can leave a stale file under the same session id; the live one wins.
+    entries.sort(key=lambda d: not _pid_alive(d.get("pid")))
+    if entries:
+        return entries[0]["name"]
+    if transcript_path:
+        title = None
+        try:
+            with open(transcript_path, encoding="utf-8") as fh:
+                for line in fh:
+                    if '"custom-title"' not in line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except Exception:
+                        continue
+                    if entry.get("type") == "custom-title" and entry.get("customTitle"):
+                        title = entry["customTitle"]
+        except Exception:
+            pass
+        return title
+    return None
+
+
+def parse_session_name(name):
+    """(task_id, date, agent_type, task_name) for a DevJock session name, else None."""
+    m = SESSION_NAME_RE.match(name or "")
+    return m.groups() if m else None
+
+
+def _as_list(value):
+    """The API returns some collections as a list and some as an object keyed "1", "2", …"""
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    if isinstance(value, dict):
+        return [v for _, v in sorted(value.items(), key=lambda kv: str(kv[0]).zfill(6)) if isinstance(v, dict)]
+    return []
+
+
+def _one_line(text, limit=160):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+class _Budget:
+    def __init__(self, seconds):
+        self.deadline = time.monotonic() + seconds
+
+    def timeout(self):
+        left = self.deadline - time.monotonic()
+        if left <= 0.5:
+            raise TimeoutError("working-context time budget used up")
+        return min(CONTEXT_CALL_TIMEOUT, left)
+
+
+def _section(title, build):
+    """Run one section builder; a failure becomes a 'could not load' line, never an error."""
+    try:
+        lines = build()
+    except TimeoutError:
+        lines = ["- not loaded (timeout)"]
+    except Exception as e:  # noqa: BLE001
+        lines = [f"- could not load ({type(e).__name__})"]
+    return [f"### {title}", ""] + (lines or ["- none"]) + [""]
+
+
+def _task_sections(task_id, token, templates, budget):
+    q = urllib.parse.quote(task_id)
+    task = {}
+
+    def task_block():
+        task.update(_get_json(f"{API}/tasks/single?task_id={q}", token, timeout=budget.timeout(),
+                              method="POST",
+                              body={"resolves": ["title", "ai_summary", "attached_files", "memory_meta"]}))
+        lines = [f"- [{task.get('title') or task_id} ({task_id})]({WEB}/tasks/{task_id})"]
+        summary = (task.get("ai_summary") or "").strip().split("\n\n")[0]
+        if summary:
+            lines.append(f"- Summary: {_one_line(summary, 400)}")
+        return lines
+
+    def handoff_block():
+        data = _get_json(f"{API}/blogs/list?task_id={q}&search_term=HANDOFF&page_size=5",
+                         token, timeout=budget.timeout())
+        for b in _first_list(data, "blog_posts"):
+            excerpt = (b.get("excerpt") or "").lstrip("*# ").strip()
+            if excerpt.startswith("HANDOFF —"):
+                title = _one_line(excerpt.split("\n")[0], 120)
+                return [f"- [{title} ({task_id})]({WEB}/tasks/{task_id}#{b.get('blog_id')}) — "
+                        "the latest handoff; read it before starting work"]
+        return ["- no handoff found"]
+
+    names = {t.get("id"): t.get("name") for t in templates}
+
+    def fetch_name(aid):
+        d = _get_json(f"{API}/agents/get?agent_id={aid}", token, timeout=budget.timeout())
+        for v in (d, d.get("data"), d.get("agent"), d.get("template")):
+            if isinstance(v, dict) and v.get("name"):
+                return v["name"]
+        return None
+
+    def sessions_block():
+        data = _get_json(f"{API}/chatsessions/list?task_id={q}&resolves=ai_summary&page_size=25",
+                         token, timeout=budget.timeout())
+        rows = [c for c in _first_list(data, "chat_sessions") if not c.get("is_archived")][:MAX_AGENT_SESSIONS]
+        lines = []
+        for c in rows:
+            agent = ""
+            try:
+                g = _get_json(f"{API}/chatsessions/get?chat_id={c.get('id')}", token, timeout=budget.timeout())
+                g = g.get("data", g) if isinstance(g, dict) else {}
+                aid = g.get("agent_id")
+                if aid:
+                    if aid not in names:
+                        # Not a platform template; one read each, cached for the run.
+                        try:
+                            names[aid] = fetch_name(aid)
+                        except TimeoutError:
+                            raise
+                        except Exception:
+                            names[aid] = None
+                    agent = f" — {names.get(aid) or f'agent {aid}'}"
+            except TimeoutError:
+                raise
+            except Exception:
+                pass
+            summary = _one_line(c.get("ai_summary"), 160)
+            lines.append(f"- [{_one_line(c.get('chat_name') or 'untitled', 90)} (c{c.get('id')})]"
+                         f"({WEB}/chat/{c.get('id')}){agent}" + (f": {summary}" if summary else ""))
+        return lines
+
+    def memories_block():
+        return [f"- [{m.get('name')} (m{m.get('id')})]({WEB}/memory/{m.get('id')})"
+                for m in _as_list(task.get("memory_meta")) if m.get("id")]
+
+    def files_block():
+        out = []
+        for f in _as_list(task.get("attached_files")):
+            name = f.get("file_display_name") or f.get("file_name") or f.get("name") or "file"
+            summary = _one_line(f.get("ai_summary"), 120)
+            out.append(f"- {name} (file {f.get('id') or f.get('file_id')})" + (f": {summary}" if summary else ""))
+        return out
+
+    lines = _section("Task", task_block)
+    lines += _section("Latest handoff", handoff_block)
+    lines += _section("Agent sessions on this task", sessions_block)
+    lines += _section("Memories", memories_block if task else (lambda: ["- not loaded (task read failed)"]))
+    lines += _section("Files", files_block if task else (lambda: ["- not loaded (task read failed)"]))
+    return lines
+
+
+def _other_sessions_lines(session_id, registry):
+    lines = []
+    for d in registry:
+        if d.get("sessionId") == session_id or not _pid_alive(d.get("pid")):
+            continue
+        sock = d.get("messagingSocketPath")
+        addr = f" — message with SendMessage to `uds:{sock}`" if sock else ""
+        lines.append(f"- {d.get('name') or d.get('sessionId')} ({d.get('status') or 'unknown'}){addr}")
+    return lines
+
+
+def working_context(session_id, transcript_path, token, templates, include_task=True):
+    """Markdown for the session's working context. Pointers and one line each."""
+    registry = _registry_sessions()
+    out = ["## Your working context — this session's task (live-injected)", ""]
+    name = session_name(session_id, transcript_path, registry) if session_id else None
+    parsed = parse_session_name(name) if include_task else None
+    if parsed:
+        task_id, _date, agent_type, _slug = parsed
+        out += [f"Session `{name}`: task {task_id}, working as {agent_type}.", ""]
+        out += _task_sections(task_id, token, templates, _Budget(CONTEXT_BUDGET_SECONDS))
+    elif not include_task:
+        out += ["No task context: this session's id or the plugin data folder was not available, "
+                "so only the platform prompts were loaded.", ""]
+    else:
+        out += [f"This session's name ({name!r}) is not a DevJock task session name, so no task "
+                "context was loaded. To tie the session to a task, `/rename` it to "
+                "`devjock_{task_id}_{YYYY-MM-DD}_{agent-type}_{task-name}` and run "
+                "/devjock:initialize-devjock again.", ""]
+    others = _other_sessions_lines(session_id, registry)
+    out += _section("Other Claude Code sessions on this machine", lambda: others)
+    return "\n".join(out)
+
+
+def context_path(session_id, data_dir):
+    """Per-session file, or None when either value is missing or malformed."""
+    if not (_valid_session_id(session_id) and _valid_data_dir(data_dir)):
+        return None
+    folder = Path(data_dir) / "context"
+    folder.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - CONTEXT_MAX_AGE_DAYS * 86400
+    for old in folder.glob("*.md"):
+        try:
+            if old.stat().st_mtime < cutoff:
+                old.unlink()
+        except Exception:
+            pass
+    return folder / f"{session_id.strip().lower()}.md"
+
+
 INIT_PROMPT_ID = 776  # dj.initialize-devjock-workflow: the report template and rules, appended last
 
 
@@ -194,7 +481,26 @@ LINUX_NOTICE = (
 )
 
 
-def main():
+def _parse_args(argv):
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--session-id", default="")
+    ap.add_argument("--data-dir", default="")
+    ap.add_argument("--transcript", default="")
+    ap.add_argument("--no-inline", action="store_true",
+                    help="never print the full body to stdout (the SessionStart hook's output is capped)")
+    try:
+        args, _ = ap.parse_known_args(argv)
+    except SystemExit:
+        # A flag with its value missing (an unquoted, empty substitution) must not stop the
+        # prompts loading; it only means no per-session file and no task context.
+        args = ap.parse_args([])
+    return args
+
+
+def main(argv=None):
+    """Write the context file and print its pointer. Returns a dict for the hook:
+    {"path", "working_context", "per_session"}; None when nothing was written."""
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
     if sys.platform not in ("darwin", "win32"):
         print(LINUX_NOTICE)
         return
@@ -250,9 +556,22 @@ def main():
     if not platform:
         platform_md += f"\n**{NO_PROMPTS_NOTICE}**\n"
 
+    # Per-session file when both the session id and the plugin data folder came through;
+    # otherwise the old shared path, which never carries task context (task 48-41483).
+    try:
+        out_path = context_path(args.session_id, args.data_dir)
+    except Exception:
+        out_path = None
+    per_session = out_path is not None
+    if not per_session:
+        out_path = Path(__file__).resolve().parent / "injected-context.md"
+    working_md = working_context(args.session_id.strip().lower(), args.transcript or None,
+                                 token, templates, include_task=per_session)
+
     body = "\n".join([
         header,
         "",
+        working_md,
         platform_md,
         emit_prompts(post, "DevJock Platform Postscripts (live-injected, postscript)"),
         registry_md,
@@ -268,10 +587,12 @@ def main():
     # full context to a file and print only a compact pointer that stays well under
     # the cap — so nothing is ever silently dropped. The skill then forces a paged
     # Read of this file before it may emit its template.
-    out_path = Path(__file__).resolve().parent / "injected-context.md"
     try:
         out_path.write_text(body, encoding="utf-8")
     except Exception as e:
+        if args.no_inline:
+            print(f"*Could not write the DevJock context file ({e}). System prompts NOT injected.*")
+            return None
         # Last-resort fallback: emit inline (may be truncated by the harness), but
         # say so loudly so the agent knows to distrust a preview.
         print("*Could not write injected-context file "
@@ -279,7 +600,7 @@ def main():
               "If you see a persisted-output/preview wrapper, the context is INCOMPLETE.*")
         print()
         print(body)
-        return
+        return None
 
     approx_tokens = max(1, len(body) // 4)
     est_reads = approx_tokens // 24000 + 1
@@ -298,6 +619,7 @@ def main():
     print("Read that file with the Read tool to its LAST line, paging by offset (about")
     print(f"{est_reads} reads). It ends with your session instructions; follow them. Nothing in")
     print("it is in your context until you have read it. This block is only a pointer.")
+    return {"path": str(out_path), "working_context": working_md, "per_session": per_session}
 
 
 if __name__ == "__main__":

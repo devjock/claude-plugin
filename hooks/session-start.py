@@ -10,6 +10,9 @@ What it does, in order:
      every session start, unasked, would be worse than the step it saves.
   3. Otherwise it runs the existing loader (skills/initialize-devjock/inject-system-prompts.py)
      and injects its pointer output, so the session starts already initialized.
+  4. After a compact it does not ask for the full reload. It injects the session's working
+     context (task, latest handoff, agent sessions, memories, files, other sessions) inline,
+     plus one line saying where the platform prompts are (task 48-41483).
 
 It always exits 0 and prints valid hook JSON or nothing, so a DevJock problem can never
 block a Claude Code session from starting.
@@ -17,6 +20,7 @@ block a Claude Code session from starting.
 import contextlib
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -59,11 +63,38 @@ def saved_token_works():
     return False
 
 
-def main():
+# The hook's injected text is capped at 10,000 characters; past that Claude Code keeps a
+# 2,000-character preview and does not tell the model to read the rest.
+HOOK_TEXT_LIMIT = 9000
+
+AFTER_COMPACT = (
+    "DevJock context after compaction. The working context below was reloaded from DevJock. "
+    "DevJock's platform prompts are in the file named next; re-read it only if their "
+    "rules are missing from the compaction summary. Do not repeat the DevJock startup report.\n\n"
+)
+
+
+def _hook_input():
     try:
-        sys.stdin.read()  # hook input JSON; nothing in it is needed
+        data = json.loads(sys.stdin.read() or "{}")
+        return data if isinstance(data, dict) else {}
     except Exception:
-        pass
+        return {}
+
+
+def _trim(text, limit=HOOK_TEXT_LIMIT):
+    if len(text) <= limit:
+        return text
+    return text[: limit - 80].rstrip() + "\n\n…(trimmed; the full working context is in the file)"
+
+
+def main():
+    hook = _hook_input()
+    source = hook.get("source") or ""
+    loader_args = ["--no-inline",
+                   "--session-id", str(hook.get("session_id") or ""),
+                   "--data-dir", os.environ.get("CLAUDE_PLUGIN_DATA", ""),
+                   "--transcript", str(hook.get("transcript_path") or "")]
 
     if sys.platform not in ("darwin", "win32"):
         emit("DevJock was not initialized automatically: this system has no credential store "
@@ -90,7 +121,7 @@ def main():
     try:
         with contextlib.redirect_stdout(buf):
             spec.loader.exec_module(loader)
-            loader.main()
+            result = loader.main(loader_args)
     except Exception as e:
         emit(f"DevJock automatic initialization failed ({e}). The user can say \"Initialize DevJock\" to retry.")
         return
@@ -100,6 +131,9 @@ def main():
         # The loader signed in but could not load the prompts (auth expired, API error).
         emit("DevJock automatic initialization did not load the system prompts. The loader said:\n\n"
              + out + "\n\nTell the user, and suggest they say \"Initialize DevJock\" to retry.")
+    elif "written to:" in out and source == "compact" and result:
+        emit(_trim(AFTER_COMPACT + f"Platform prompts file: {result['path']}\n\n"
+                   + result["working_context"]))
     elif "written to:" in out:
         emit(MANDATORY + out)
     else:
