@@ -169,7 +169,7 @@ def fetch_description(agent_id, token):
 
 def emit_registry(templates, token):
     out = [
-        "## DevJock Agent Blueprint Registry (live-injected)",
+        "## DevJock Agent Blueprints (live-injected)",
         "",
         ("These are DevJock **cloud** agent blueprints (the `ai_agent_templates` table), "
          "NOT local Claude Code skills. A blueprint is configuration (model, prompts, "
@@ -553,7 +553,7 @@ def main(argv=None):
 
     header = (f"<!-- DevJock system prompts injected live: {len(platform)} system (preamble) "
               f"+ {len(post)} postscript prompts + {n_skills} skills + {n_agents} agents "
-              f"(agent blueprint registry). Order mirrors CWO. -->")
+              f"(agent blueprints). Order mirrors CWO. -->")
     if DEVJOCK_ENV != "production":
         header += f"\n<!-- DEVJOCK_ENV={DEVJOCK_ENV}: loaded from {API} -->"
     if not platform:
