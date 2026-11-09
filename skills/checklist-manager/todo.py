@@ -477,11 +477,11 @@ def discover():
 
 
 def _local_counts(list_name):
-    """Open/total for a list whose JSONL is on this machine; None if it is not."""
-    live, arch = _paths(list_name)
-    if not os.path.exists(live):
+    """Open/total for a list, read from its memory; None if the memory can't be read."""
+    try:
+        items = _load(_paths(list_name)[0])
+    except Exception:
         return None
-    items = _load(live)
     return sum(1 for i in items if not i.get("checked")), len(items)
 
 
@@ -493,7 +493,7 @@ def _local_counts(list_name):
 # of any list (see push), and by whoever else calls `todo.py rollup` (EA boot, EA run).
 ROLLUP_CFG = os.path.join(DATA_DIR, "rollup.json")
 ROLLUP_NAME = "ROLLUP: work across all checklists"
-ROLLUP_CATS = ("in process", "in progress", "next")
+ROLLUP_CATS = ("in-process", "in-progress", "in process", "in progress", "next")
 
 
 def _rollup_cfg():
@@ -510,10 +510,11 @@ def _rollup_items():
     for r in discover_cached():
         if not r["list"]:
             continue
-        live, _ = _paths(r["list"])
-        if not os.path.exists(live):
+        try:
+            items = _load(_paths(r["list"])[0])
+        except Exception:
             continue
-        for it in _load(live):
+        for it in items:
             if it.get("checked"):
                 continue
             cat = (it.get("category") or "").strip().lower()
