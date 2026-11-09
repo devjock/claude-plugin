@@ -103,7 +103,7 @@
     // GTD status order, taken from the DevJock status table itself (p447 §4):
     // In Process = right now; Next = after the In Process pile; Active = not today;
     // Someday = no near-term plan. Wait/Blocked are cross-cutting. Unknown sorts last.
-    var GTD = ['in-progress', 'in process', 'in progress', 'done-verify', 'next', 'waiting', 'wait', 'blocked', 'active', 'someday', 'ongoing'];
+    var GTD = ['in-progress', 'in-process', 'in process', 'in progress', 'done-verify', 'next', 'waiting', 'wait', 'blocked', 'active', 'someday', 'ongoing'];
     var rank = function (c) { var i = GTD.indexOf((c || '').toLowerCase()); return i < 0 ? GTD.length : i; };
     cats.sort(function (a, b) { return rank(a) - rank(b); });
     var irank = function (it) { var r = parseInt(it.rank, 10); return isNaN(r) ? [1,0,it.n] : [0,r,it.n]; };

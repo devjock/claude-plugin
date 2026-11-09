@@ -218,7 +218,7 @@ def _render_item(it):
 # status table via ensure_context (p447 §4), so a checklist reads like a task board.
 # In Process = right now; Next = after the In Process pile; Active = on the short list
 # but not today; Someday = no near-term plan. Wait/Blocked cross-cut. Unknown sorts last.
-CAT_ORDER = ["in-progress", "in process", "in progress", "done-verify",
+CAT_ORDER = ["in-progress", "in-process", "in process", "in progress", "done-verify",
              "next", "waiting", "wait", "blocked", "active",
              "someday", "ongoing"]
 
