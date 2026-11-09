@@ -69,8 +69,7 @@ python3 $P rollup --home 51-150 --user 2359   # first run: ONE read-only view ac
 python3 $P rollup                    # regenerate it (also runs after every push, once configured)
 ```
 
-Add `--no-push` to any mutating command to batch changes, then `push` once. Do this when
-seeding a list — every add otherwise pushes, and a long seed will hit an HTTP 429.
+Every change is written to the memory at once. Seeding a long list makes one write per item; if DevJock answers HTTP 429, wait and retry the failed command.
 
 ## Rollup
 
@@ -122,7 +121,7 @@ immutability contract. Unranked items fall below every ranked one, in creation o
 
 ## Data model
 
-- Data lives OUTSIDE the plugin so updates never wipe it: `~/.claude/todo-lists/<list>.jsonl` (+ `<list>-archive.jsonl`).
+- **The memory is the list.** Its HTML carries the items as JSON; every command reads that JSON from the memory, applies the change and writes the memory back in the same run. There is no local copy and no `--no-push` (the flag is accepted and ignored), so the memory can never fall behind. A failed write fails the command and nothing is stored anywhere — retry it. Lists kept in the retired `~/.claude/todo-lists/*.jsonl` files are read once and written into the memory on their first command.
 - The list name encodes the target memory: `m3951` → memory 3951. A new list = a new `m<id>` name pointing at an existing memory.
 - Item columns: number (permanent, never reused), title, description, link + link_title, category, created date, updates[], checked{date, note}.
 - Rendered view: interactive HTML artifact (code-type memory) — grouped by category, filter bar up top to show/hide completed items and the archive, live counts.
@@ -131,7 +130,7 @@ immutability contract. Unranked items fall below every ranked one, in creation o
 ## Rules for the agent
 
 1. NEVER update a managed memory with update_memory — `push` owns it. The memory carries a "managed mechanically" stamp.
-2. NEVER edit `~/.claude/todo-lists/*.jsonl` by hand — commands only. There is deliberately no edit command; a wrong item gets checked with a note ("superseded by item N") and replaced by a new item.
+2. NEVER edit the list by hand — commands only. There is deliberately no edit command; a wrong item gets checked with a note ("superseded by item N") and replaced by a new item.
 3. The list belongs to the human, and only the human closes an item: run `check` when they say a named item is done, not when the work looks finished to you. Until then, progress goes in via `note`, and the check-off note is the human's dated outcome in plain English (date stamped automatically).
 4. Read with `get`/`list`, never by pulling the memory — that is the whole point.
 5. When an item becomes a real task, link it (`--link` + `--link-title`) rather than leaving the list as a parallel copy of the work.

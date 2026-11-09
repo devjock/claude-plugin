@@ -30,12 +30,15 @@ invoke it on Windows (python, not python3; no $P shell variable).
 
 Design contract: item text is IMMUTABLE. Operations are
 add / check / note / archive / get / list / push only. There is no edit.
-The DevJock memory is a rendered VIEW — never hand-edited, always overwritten
-by push.
+The DevJock memory IS the list: its HTML carries the items as JSON (var DATA = ...),
+and every command reads that JSON from the memory, applies the change and writes the
+whole memory back in the same run. There is no local copy, so the memory can never
+fall behind. A failed write fails the command, and nothing is stored anywhere.
 
-Data lives OUTSIDE the skill (survives plugin updates): ~/.claude/todo-lists/
-Lists are named for their target memory: m3951.jsonl -> memory 3951.
-Archived items move to m3951-archive.jsonl and keep their numbers forever.
+Lists are named for their memory: m3951 -> memory 3951.
+Archived items move to the memory's archive section and keep their numbers forever.
+(Lists from before 2026-11-09 were kept in ~/.claude/todo-lists/<list>.jsonl; the first
+command on such a list reads those files once and writes them into the memory.)
 
 Usage:
   todo.py list    <list> [--all]                 # numbers + titles (token-cheap)
@@ -48,7 +51,7 @@ Usage:
   todo.py archive <list>                         # move checked items to the archive file
   todo.py push    <list>                         # render template + upload to the DevJock memory
   todo.py rollup  [--home TASK_ID --user USER_ID] # regenerate the read-only cross-checklist view
-Mutating commands auto-push unless --no-push.
+Every change is written to the memory immediately (--no-push is accepted and ignored).
 """
 import argparse, datetime, glob, io, json, os, re, sys, urllib.request
 
@@ -58,24 +61,48 @@ TEMPLATE = os.path.join(SKILL_DIR, "template.html")
 API_BASE = "https://api.devjock.com/v1.0"
 
 
-def _paths(name):
-    return (os.path.join(DATA_DIR, f"{name}.jsonl"),
-            os.path.join(DATA_DIR, f"{name}-archive.jsonl"))
+# The list lives in its DevJock memory. _LISTS holds what this run read from the memory;
+# a "path" is (list name, "items" | "archive") so the commands below stay unchanged.
+_LISTS = {}
+_DATA_LINE = re.compile(r"^\s*var DATA = (.*);\s*$", re.M)
 
 
-def _load(path):
-    if not os.path.exists(path):
+def _legacy_load(fp):
+    """Read a pre-2026-11-09 local JSONL list (one-time migration only)."""
+    if not os.path.exists(fp):
         return []
-    with open(path, encoding="utf-8") as f:
+    with open(fp, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
 
+def _fetch(name):
+    if name in _LISTS:
+        return _LISTS[name]
+    mem = _api(f"memories/get?memory_id={_memory_id(name)}")
+    m = _DATA_LINE.search(mem.get("content") or "")
+    if m:
+        # render() escapes "<!--" as "<\\!--" for the inline script; "<\\/" is already valid JSON.
+        data = json.loads(m.group(1).replace("<\\!--", "<!--"))
+    else:
+        data = {"items": _legacy_load(os.path.join(DATA_DIR, f"{name}.jsonl")),
+                "archive": _legacy_load(os.path.join(DATA_DIR, f"{name}-archive.jsonl"))}
+    data.setdefault("items", []); data.setdefault("archive", [])
+    _LISTS[name] = data
+    return data
+
+
+def _paths(name):
+    return ((name, "items"), (name, "archive"))
+
+
+def _load(path):
+    name, key = path
+    return list(_fetch(name)[key])
+
+
 def _save(path, items):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    # newline="\n" so the JSONL is byte-identical on Windows (no CRLF).
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        for it in items:
-            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+    name, key = path
+    _fetch(name)[key] = list(items)
 
 
 def _today():
@@ -829,8 +856,8 @@ def main():
     elif a.command == "push":
         push(a.name); return
 
-    if not a.no_push:
-        push(a.name)
+    # Every change goes straight to the memory; there is no local copy to fall behind.
+    push(a.name)
 
 
 if __name__ == "__main__":
