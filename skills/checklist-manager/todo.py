@@ -64,6 +64,8 @@ API_BASE = "https://api.devjock.com/v1.0"
 # The list lives in its DevJock memory. _LISTS holds what this run read from the memory;
 # a "path" is (list name, "items" | "archive") so the commands below stay unchanged.
 _LISTS = {}
+_VERSIONS = {}   # list name -> the memory's modified_on when this run read it
+_PENDING = []    # what a mutating command reports, printed only after the memory write
 _DATA_LINE = re.compile(r"^\s*var DATA = (.*);\s*$", re.M)
 
 
@@ -79,6 +81,7 @@ def _fetch(name):
     if name in _LISTS:
         return _LISTS[name]
     mem = _api(f"memories/get?memory_id={_memory_id(name)}")
+    _VERSIONS[name] = mem.get("modified_on")
     m = _DATA_LINE.search(mem.get("content") or "")
     if m:
         # render() escapes "<!--" as "<\\!--" for the inline script; "<\\/" is already valid JSON.
@@ -381,6 +384,14 @@ def render(name):
 def push(name):
     mem_id = _memory_id(name)
     content = render(name)
+    # Lost-update guard: if anyone wrote the memory since this run read it, stop and
+    # write nothing, so their change is not overwritten. Re-running the command reads
+    # the new list and applies the change on top of it.
+    if name in _VERSIONS:
+        now = _api(f"memories/get?memory_id={mem_id}").get("modified_on")
+        if now != _VERSIONS[name]:
+            sys.exit(f"ERROR: {name} was changed by someone else while this command ran "
+                     f"(memory modified {now}); nothing was written. Run the command again.")
     payload = {"content": content, "file_type_id": 3}
     title = _list_title(name)
     if title and title != name:
@@ -803,7 +814,7 @@ def main():
               "link_title": a.link_title, "category": a.category,
               "created": _today(), "updates": [], "checked": None}
         items.append(it); _save(live_path, items)
-        print(_fmt_item(it, full=True))
+        _PENDING.append(_fmt_item(it, full=True))
 
     elif a.command == "check":
         if a.n is None or not a.note: sys.exit("check needs an item number and --note")
@@ -811,14 +822,14 @@ def main():
         if not hit: sys.exit(f"no live item {a.n}")
         if hit.get("checked"): sys.exit(f"item {a.n} already checked on {hit['checked']['date']}")
         hit["checked"] = {"date": _today(), "note": a.note}
-        _save(live_path, items); print(_fmt_item(hit, full=True))
+        _save(live_path, items); _PENDING.append(_fmt_item(hit, full=True))
 
     elif a.command == "note":
         if a.n is None or not a.note: sys.exit("note needs an item number and --note")
         hit = next((i for i in items if i["n"] == a.n), None)
         if not hit: sys.exit(f"no live item {a.n}")
         hit.setdefault("updates", []).append({"date": _today(), "note": a.note})
-        _save(live_path, items); print(_fmt_item(hit, full=True))
+        _save(live_path, items); _PENDING.append(_fmt_item(hit, full=True))
 
     elif a.command == "recat":
         # Category is GTD status metadata, NOT item text — moving an item between
@@ -828,7 +839,7 @@ def main():
         if not hit: sys.exit(f"no live item {a.n}")
         old = hit.get("category") or "uncategorized"
         hit["category"] = a.category
-        _save(live_path, items); print(f"item {a.n}: {old} -> {a.category}")
+        _save(live_path, items); _PENDING.append(f"item {a.n}: {old} -> {a.category}")
 
     elif a.command == "rank":
         # Rank is ordering metadata, not item text. 1 = top of its category.
@@ -841,10 +852,10 @@ def main():
         old = hit.get("rank")
         if a.rank == 0:
             hit.pop("rank", None)
-            print(f"item {a.n}: rank {old} -> cleared")
+            _PENDING.append(f"item {a.n}: rank {old} -> cleared")
         else:
             hit["rank"] = a.rank
-            print(f"item {a.n}: rank {old} -> {a.rank}")
+            _PENDING.append(f"item {a.n}: rank {old} -> {a.rank}")
         _save(live_path, items)
 
     elif a.command == "archive":
@@ -852,13 +863,16 @@ def main():
         move = [i for i in items if i.get("checked")]
         if not move: print("nothing checked to archive"); return
         _save(arch_path, _load(arch_path) + move); _save(live_path, keep)
-        print(f"archived {len(move)} item(s): {', '.join(str(i['n']) for i in move)}")
+        _PENDING.append(f"archived {len(move)} item(s): {', '.join(str(i['n']) for i in move)}")
 
     elif a.command == "push":
         push(a.name); return
 
     # Every change goes straight to the memory; there is no local copy to fall behind.
+    # Report the change only once the write has succeeded.
     push(a.name)
+    for line in _PENDING:
+        print(line)
 
 
 if __name__ == "__main__":
