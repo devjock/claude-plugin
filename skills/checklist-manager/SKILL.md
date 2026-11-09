@@ -69,7 +69,7 @@ python3 $P rollup --home 51-150 --user 2359   # first run: ONE read-only view ac
 python3 $P rollup                    # regenerate it (also runs after every push, once configured)
 ```
 
-Every change is written to the memory at once. Seeding a long list makes one write per item; if DevJock answers HTTP 429, wait and retry the failed command.
+Every change is written to the memory at once. Seeding a long list makes one write per item; if DevJock answers HTTP 429, wait and retry the failed command. If a command fails or times out, check before retrying, because the write may have landed: `list --all` for an add, check or archive, and `get <n>` for a note. If another agent changed the list while your command ran, the command stops and writes nothing; just run it again.
 
 ## Rollup
 
