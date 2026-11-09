@@ -169,18 +169,21 @@ def fetch_description(agent_id, token):
 
 def emit_registry(templates, token):
     out = [
-        "## DevJock Skill & Agent Registry — the cloud template layer (live-injected)",
+        "## DevJock Agent Blueprints (live-injected)",
         "",
-        ("These are DevJock **cloud** skills and agents (the `ai_agent_templates` table), "
-         "NOT local Claude Code skills. Invoke via the `chat_with_agent` tool: pass "
-         "`skill_ids=[id]` to layer a skill onto a chat, or `agent_id=id` (or the "
-         "assistant's `task_id`) to talk to an agent. Descriptions below tell you what "
-         "each does — read them before deciding which to use."),
+        ("These are DevJock **cloud** agent blueprints (the `ai_agent_templates` table), "
+         "NOT local Claude Code skills. A blueprint is configuration (model, prompts, "
+         "tools) and does nothing on its own: it runs inside an agent session. Use them "
+         "through the `chat_with_agent` tool: pass `skill_ids=[id]` to layer a skill "
+         "blueprint onto an agent session, or `agent_id=id` to start an agent session "
+         "that runs on that blueprint. To talk to a specific assistant, pass its "
+         "`task_id` instead. Descriptions below say what each blueprint configures; "
+         "read them before choosing."),
         "",
     ]
     skills = [t for t in templates if _category(t).lower() == "skill"]
     agents = [t for t in templates if _category(t).lower() != "skill"]
-    for group_name, group in (("Skills", skills), ("Agents", agents)):
+    for group_name, group in (("Skill blueprints", skills), ("Other agent blueprints", agents)):
         if not group:
             continue
         out.append(f"### {group_name}")
@@ -190,8 +193,7 @@ def emit_registry(templates, token):
             desc = " ".join((fetch_description(tid, token) or "").split()).strip()
             if not desc:
                 desc = "(no description set)"
-            out.append(f"- **{t.get('name')}** "
-                       f"([agent {tid}](https://www.devjock.com/ai/agents/single/?id={tid})): {desc}")
+            out.append(f"- [{t.get('name')} (a{tid})](https://www.devjock.ai/agents/{tid}): {desc}")
         out.append("")
     return "\n".join(out), len(skills), len(agents)
 
@@ -551,7 +553,7 @@ def main(argv=None):
 
     header = (f"<!-- DevJock system prompts injected live: {len(platform)} system (preamble) "
               f"+ {len(post)} postscript prompts + {n_skills} skills + {n_agents} agents "
-              f"(agent-templates registry). Order mirrors CWO. -->")
+              f"(agent blueprints). Order mirrors CWO. -->")
     if DEVJOCK_ENV != "production":
         header += f"\n<!-- DEVJOCK_ENV={DEVJOCK_ENV}: loaded from {API} -->"
     if not platform:
